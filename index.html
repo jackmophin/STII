@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STII</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        canvas {
+            border: 1px solid #000;
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sound-To-Image by Imancat</h1>
+    <h2>Зашифровать</h2>
+    <input type="file" id="audioInput" accept="audio/*" />
+    <canvas id="encodeCanvas"></canvas>
+    <a id="downloadImage" style="display:none;">Download Image</a>
+    <h2>Дешифровать</h2>
+    <input type="file" id="imageInput" accept="image/*" />
+    <button id="playButton" disabled>Play Decoded Sound</button>
+    <canvas id="decodeCanvas"></canvas>
+
+    <script>
+        const audioInput = document.getElementById('audioInput');
+        const encodeCanvas = document.getElementById('encodeCanvas');
+        const encodeCtx = encodeCanvas.getContext('2d');
+        const downloadImage = document.getElementById('downloadImage');
+
+        const imageInput = document.getElementById('imageInput');
+        const decodeCanvas = document.getElementById('decodeCanvas');
+        const decodeCtx = decodeCanvas.getContext('2d');
+        const playButton = document.getElementById('playButton');
+        let decodedAudioBuffer = null;
+
+        // Шифровка звука в изображение
+        audioInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const fileReader = new FileReader();
+
+            fileReader.onload = async (e) => {
+                const arrayBuffer = e.target.result;
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                const channelData = audioBuffer.getChannelData(0); // Первый канал
+                const totalSamples = channelData.length;
+
+                // Устанавливаем размер канваса для шифрования
+                const canvasSize = Math.ceil(Math.sqrt(totalSamples));
+                encodeCanvas.width = canvasSize;
+                encodeCanvas.height = canvasSize;
+
+                const imageData = encodeCtx.createImageData(canvasSize, canvasSize);
+                const data = imageData.data;
+
+                for (let i = 0; i < totalSamples; i++) {
+                    const amplitude = Math.min(Math.max(channelData[i] * 128 + 128, 0), 255);
+                    const index = i * 4;
+
+                    data[index] = amplitude;
+                    data[index + 1] = amplitude;
+                    data[index + 2] = amplitude;
+                    data[index + 3] = 255;
+                }
+
+                encodeCtx.putImageData(imageData, 0, 0);
+                encodeCanvas.style.display = 'block';
+                downloadImage.style.display = 'block';
+                downloadImage.href = encodeCanvas.toDataURL();
+                downloadImage.download = 'encoded-image.png';
+            };
+
+            fileReader.readAsArrayBuffer(file);
+        });
+
+        // Дешифрация изображения в звук
+        imageInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const image = new Image();
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                image.src = e.target.result;
+            };
+
+            image.onload = () => {
+                decodeCanvas.width = image.width;
+                decodeCanvas.height = image.height;
+                decodeCtx.drawImage(image, 0, 0);
+                const imageData = decodeCtx.getImageData(0, 0, decodeCanvas.width, decodeCanvas.height);
+                decodedAudioBuffer = decodeImageToSound(imageData);
+                playButton.disabled = !decodedAudioBuffer;
+            };
+
+            reader.readAsDataURL(file);
+        });
+
+        playButton.addEventListener('click', () => {
+            if (decodedAudioBuffer) {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createBufferSource();
+                source.buffer = decodedAudioBuffer;
+                source.connect(audioContext.destination);
+                source.start();
+            }
+        });
+
+        function decodeImageToSound(imageData) {
+            const { width, height, data } = imageData;
+            const samples = width * height;
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const sampleRate = 44100;
+
+            const audioBuffer = audioContext.createBuffer(1, samples, sampleRate);
+            const channelData = audioBuffer.getChannelData(0);
+
+            for (let i = 0; i < samples; i++) {
+                const gray = data[i * 4];
+                channelData[i] = (gray - 128) / 128;
+            }
+
+            return audioBuffer;
+        }
+    </script>
+</body>
+</html>
