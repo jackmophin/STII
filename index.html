@@ -40,6 +40,8 @@
         const playButton = document.getElementById('playButton');
         let decodedAudioBuffer = null;
 
+        const MAX_CANVAS_SIZE = 1280;
+
         // Шифровка звука в изображение
         audioInput.addEventListener('change', async (event) => {
             const file = event.target.files[0];
@@ -55,15 +57,31 @@
                 const channelData = audioBuffer.getChannelData(0); // Первый канал
                 const totalSamples = channelData.length;
 
-                // Устанавливаем размер канваса для шифрования
+                // Вычисляем размер канваса
                 const canvasSize = Math.ceil(Math.sqrt(totalSamples));
-                encodeCanvas.width = canvasSize;
-                encodeCanvas.height = canvasSize;
+                if (canvasSize > MAX_CANVAS_SIZE) {
+                    const maxSamples = MAX_CANVAS_SIZE * MAX_CANVAS_SIZE;
+                    if (totalSamples > maxSamples) {
+                        alert("Слишком большая длина файла! Макс. 37 с.");
+                        return;
+                    }
 
-                const imageData = encodeCtx.createImageData(canvasSize, canvasSize);
+                    // Сжимаем данные
+                    const ratio = totalSamples / maxSamples;
+                    const compressedData = new Float32Array(maxSamples);
+                    for (let i = 0; i < maxSamples; i++) {
+                        compressedData[i] = channelData[Math.floor(i * ratio)];
+                    }
+                    channelData.set(compressedData.subarray(0, maxSamples));
+                }
+
+                encodeCanvas.width = MAX_CANVAS_SIZE;
+                encodeCanvas.height = MAX_CANVAS_SIZE;
+
+                const imageData = encodeCtx.createImageData(MAX_CANVAS_SIZE, MAX_CANVAS_SIZE);
                 const data = imageData.data;
 
-                for (let i = 0; i < totalSamples; i++) {
+                for (let i = 0; i < channelData.length; i++) {
                     const amplitude = Math.min(Math.max(channelData[i] * 128 + 128, 0), 255);
                     const index = i * 4;
 
